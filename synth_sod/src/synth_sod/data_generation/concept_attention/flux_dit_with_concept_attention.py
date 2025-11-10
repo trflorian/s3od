@@ -9,12 +9,25 @@ from torch import Tensor
 from diffusers.models.transformers.transformer_flux import FluxTransformer2DModel
 from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock
 from diffusers.models.normalization import AdaLayerNormContinuous
-from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers, BaseOutput
+from diffusers.utils import (
+    USE_PEFT_BACKEND,
+    is_torch_version,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+    BaseOutput,
+)
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import maybe_allow_in_graph
-from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from diffusers.models.embeddings import (
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    FluxPosEmbed,
+)
 
-from data_generation.concept_attention.flux_dit_block_with_concept_attention import FluxTransformerBlockWithConceptAttention
+from synth_sod.data_generation.concept_attention.flux_dit_block_with_concept_attention import (
+    FluxTransformerBlockWithConceptAttention,
+)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -26,7 +39,7 @@ class FluxTransformer2DOutputWithConceptAttention(BaseOutput):
 
 class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
     """
-        The Transformer model introduced in Flux with Concept Attention.
+    The Transformer model introduced in Flux with Concept Attention.
     """
 
     def __init__(
@@ -58,18 +71,25 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
             axes_dims_rope=axes_dims_rope,
         )
         self.out_channels = out_channels or in_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.inner_dim = (
+            self.config.num_attention_heads * self.config.attention_head_dim
+        )
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
         text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if self.config.guidance_embeds else CombinedTimestepTextProjEmbeddings
+            CombinedTimestepGuidanceTextProjEmbeddings
+            if self.config.guidance_embeds
+            else CombinedTimestepTextProjEmbeddings
         )
         self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim,
+            pooled_projection_dim=self.config.pooled_projection_dim,
         )
 
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
+        self.context_embedder = nn.Linear(
+            self.config.joint_attention_dim, self.inner_dim
+        )
         self.x_embedder = nn.Linear(self.config.in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
@@ -94,8 +114,12 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        self.norm_out = AdaLayerNormContinuous(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
+        )
+        self.proj_out = nn.Linear(
+            self.inner_dim, patch_size * patch_size * self.out_channels, bias=True
+        )
 
         self.gradient_checkpointing = False
 
@@ -105,7 +129,7 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
             "single_transformer_blocks": [4, 16, 27, 36],
         }
         self._register_feature_hooks()
-    
+
     def get_features(self) -> Tuple[List[Tensor], List[Tensor]]:
         """
         Get the stored feature maps as raw tokens for downstream reshaping.
@@ -134,9 +158,9 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
                 if isinstance(feature_output, tuple) and len(feature_output) >= 2:
                     image_feature = feature_output[1]  # [B, H*W, C]
                     transformer_features.append(image_feature)
-        
+
         return (transformer_features, single_transformer_features)
-    
+
     def _get_hook(self, name: str):
         """
         Create a forward hook function for feature extraction.
@@ -149,7 +173,7 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
         """
 
         def hook(
-                module: nn.Module, input: Union[Tensor, Tuple[Tensor, ...]], output: Tensor
+            module: nn.Module, input: Union[Tensor, Tuple[Tensor, ...]], output: Tensor
         ) -> None:
             self.stored_features[name] = output
 
@@ -235,7 +259,10 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+            if (
+                joint_attention_kwargs is not None
+                and joint_attention_kwargs.get("scale", None) is not None
+            ):
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
@@ -260,7 +287,9 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
             if guidance is None:
                 concept_temb = self.time_text_embed(timestep, pooled_concept_embeds)
             else:
-                concept_temb = self.time_text_embed(timestep, guidance, pooled_concept_embeds)
+                concept_temb = self.time_text_embed(
+                    timestep, guidance, pooled_concept_embeds
+                )
 
         # Apply the context embedder to the concept_hidden_states
         if concept_hidden_states is not None:
@@ -285,8 +314,13 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
         concept_image_ids = torch.cat((concept_ids, img_ids), dim=0)
         concept_rotary_emb = self.pos_embed(concept_image_ids)
 
-        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
-            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
+        if (
+            joint_attention_kwargs is not None
+            and "ip_adapter_image_embeds" in joint_attention_kwargs
+        ):
+            ip_adapter_image_embeds = joint_attention_kwargs.pop(
+                "ip_adapter_image_embeds"
+            )
             ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
             joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
@@ -295,7 +329,9 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                raise NotImplementedError("Gradient checkpointing is not implemented for concept attention.")
+                raise NotImplementedError(
+                    "Gradient checkpointing is not implemented for concept attention."
+                )
                 # encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                 #     block,
                 #     hidden_states,
@@ -305,7 +341,12 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
                 #     concept_rotary_emb,
                 # )
             else:
-                encoder_hidden_states, hidden_states, concept_hidden_states, current_concept_attention_maps = block(
+                (
+                    encoder_hidden_states,
+                    hidden_states,
+                    concept_hidden_states,
+                    current_concept_attention_maps,
+                ) = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     concept_hidden_states=concept_hidden_states,
@@ -316,24 +357,34 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
                     joint_attention_kwargs=joint_attention_kwargs,
                     concept_attention_kwargs=concept_attention_kwargs,
                 )
-                
+
                 # Collect raw attention maps only (no processing here!)
-                if (current_concept_attention_maps is not None and 
-                    concept_attention_kwargs is not None and 
-                    index_block in concept_attention_kwargs["layers"]):
+                if (
+                    current_concept_attention_maps is not None
+                    and concept_attention_kwargs is not None
+                    and index_block in concept_attention_kwargs["layers"]
+                ):
                     all_concept_attention_maps.append(current_concept_attention_maps)
 
             # controlnet residual
             if controlnet_block_samples is not None:
-                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
+                interval_control = len(self.transformer_blocks) / len(
+                    controlnet_block_samples
+                )
                 interval_control = int(np.ceil(interval_control))
                 # For Xlabs ControlNet.
                 if controlnet_blocks_repeat:
                     hidden_states = (
-                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
+                        hidden_states
+                        + controlnet_block_samples[
+                            index_block % len(controlnet_block_samples)
+                        ]
                     )
                 else:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+                    hidden_states = (
+                        hidden_states
+                        + controlnet_block_samples[index_block // interval_control]
+                    )
 
         if concept_hidden_states is not None:
             concept_hidden_states = concept_hidden_states.cpu()
@@ -356,7 +407,9 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
                 )
             # controlnet residual
             if controlnet_single_block_samples is not None:
-                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
+                interval_control = len(self.single_transformer_blocks) / len(
+                    controlnet_single_block_samples
+                )
                 interval_control = int(np.ceil(interval_control))
                 hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
                     hidden_states[:, encoder_hidden_states.shape[1] :, ...]
@@ -380,5 +433,7 @@ class FluxTransformer2DModelWithConceptAttention(FluxTransformer2DModel):
 
         if not return_dict:
             return (output, concept_attention_maps)
-        
-        return FluxTransformer2DOutputWithConceptAttention(sample=output, concept_attention_maps=concept_attention_maps)
+
+        return FluxTransformer2DOutputWithConceptAttention(
+            sample=output, concept_attention_maps=concept_attention_maps
+        )

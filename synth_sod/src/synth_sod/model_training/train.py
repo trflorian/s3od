@@ -4,15 +4,19 @@ from datetime import datetime
 import torch
 import hydra
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
+from pytorch_lightning.callbacks import (
+    ModelCheckpoint,
+    LearningRateMonitor,
+    EarlyStopping,
+)
 from pytorch_lightning.loggers import TensorBoardLogger
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 
-from model_training.dataset import create_dataloaders
-from model_training.lightning_module import SegmentationLightningModule
-from model_training.predictor import SODPredictor
-from model_training.compute_metrics import process_dataset
+from synth_sod.model_training.dataset import create_dataloaders
+from synth_sod.model_training.lightning_module import SegmentationLightningModule
+from synth_sod.model_training.predictor import SODPredictor
+from synth_sod.model_training.compute_metrics import process_dataset
 
 OmegaConf.register_new_resolver("eval", eval)
 
@@ -29,9 +33,7 @@ class EvaluationCallback(pl.Callback):
 
         best_model_path = trainer.checkpoint_callback.best_model_path
         predictor = SODPredictor(
-            best_model_path,
-            self.eval_config.image_size,
-            device='cuda'
+            best_model_path, self.eval_config.image_size, device="cuda"
         )
 
         all_metrics = {}
@@ -49,7 +51,7 @@ class EvaluationCallback(pl.Callback):
                         trainer.logger.experiment.add_scalar(
                             f"evaluation/{dataset_name}/{metric_name}",
                             value,
-                            global_step=trainer.global_step
+                            global_step=trainer.global_step,
                         )
 
 
@@ -82,33 +84,33 @@ def train(config: DictConfig):
         val_split=config.dataset.val_split,
         seed=config.backend.seed,
         transform_mode=config.dataset.transform_mode,
-        flux_features_dir=config.dataset.get('flux_features_dir', None),
-        feature_layers=config.dataset.get('feature_layers', [0, 1, 2, 3]),
-        debug_subset_fraction=config.dataset.get('debug_subset_fraction', None),
+        flux_features_dir=config.dataset.get("flux_features_dir", None),
+        feature_layers=config.dataset.get("feature_layers", [0, 1, 2, 3]),
+        debug_subset_fraction=config.dataset.get("debug_subset_fraction", None),
     )
-    
+
     model = SegmentationLightningModule(config)
 
     logger = TensorBoardLogger(
         save_dir=config.train_stage.log_dir,
         name=experiment_name,
-        default_hp_metric=False
+        default_hp_metric=False,
     )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"{config.train_stage.save_dir}/{experiment_name}",
-        filename='{epoch:02d}-{val_dice_epoch:.4f}',
-        monitor='val_dice_epoch',
-        mode='max',
+        filename="{epoch:02d}-{val_dice_epoch:.4f}",
+        monitor="val_dice_epoch",
+        mode="max",
         save_top_k=3,
-        save_last=True
+        save_last=True,
     )
 
     callbacks = [
         checkpoint_callback,
         EarlyStopping(**config.train_stage.early_stopping),
         EvaluationCallback(config.train_stage.evaluation),
-        LearningRateMonitor(logging_interval='step')
+        LearningRateMonitor(logging_interval="step"),
     ]
 
     trainer = pl.Trainer(
@@ -119,11 +121,10 @@ def train(config: DictConfig):
         accumulate_grad_batches=config.backend.accumulate_grad_batches,
         callbacks=callbacks,
         logger=logger,
-        strategy=config.backend.get('strategy', 'fsdp'),
+        strategy=config.backend.get("strategy", "fsdp"),
     )
     if config.train_stage.checkpoint_path is not None:
         if config.train_stage.weights_only:
-
             state_dict = SegmentationLightningModule.load_from_checkpoint(
                 config.train_stage.checkpoint_path,
                 weights_only=True,
@@ -131,7 +132,12 @@ def train(config: DictConfig):
             model.load_state_dict(state_dict)
             trainer.fit(model, train_loader, val_loader)
         else:
-            trainer.fit(model, train_loader, val_loader, ckpt_path=config.train_stage.checkpoint_path)
+            trainer.fit(
+                model,
+                train_loader,
+                val_loader,
+                ckpt_path=config.train_stage.checkpoint_path,
+            )
     else:
         trainer.fit(model, train_loader, val_loader)
 

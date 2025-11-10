@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import numpy as np
 
-from model_training.predictor import SODPredictor, SODTeacherPredictor
-from model_training.metrics import EvaluationMetrics
+from synth_sod.model_training.predictor import SODPredictor, SODTeacherPredictor
+from synth_sod.model_training.metrics import EvaluationMetrics
 
 
 def load_metadata(metadata_dir: str, dataset: str) -> Dict[str, Dict[str, str]]:
@@ -211,12 +211,12 @@ def get_datasets(datasets: str):
 def main(
     input_dir: str, 
     model_path: str, 
+    flux_model_path: str,
     model_type: str = 'student',
     metadata_dir: Optional[str] = None,
     img_size: int = 224, 
     datasets: str = 'all',
     compute_best_metrics: bool = False,
-    flux_model_path: str
 ):
     datasets_list = get_datasets(datasets=datasets)
     print(f"Model type: {model_type}")

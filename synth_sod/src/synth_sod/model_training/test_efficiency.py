@@ -8,7 +8,7 @@ from tqdm import tqdm
 import fire
 import copy
 
-from model_training.predictor import SODPredictor
+from synth_sod.model_training.predictor import SODPredictor
 
 
 class BenchmarkSOD:
@@ -87,13 +87,13 @@ class BenchmarkSOD:
         dummy_input = np.random.randint(0, 255, (*input_size, 3), dtype=np.uint8)
 
         with torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.CUDA,
-                ],
-                profile_memory=True,
-                record_shapes=True,
-                with_stack=True
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            profile_memory=True,
+            record_shapes=True,
+            with_stack=True,
         ) as prof:
             result = predictor.predict(dummy_input)
             torch.cuda.synchronize()  # Ensure all CUDA operations are completed
@@ -105,20 +105,22 @@ class BenchmarkSOD:
         if torch.cuda.is_available():
             memory_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB
             memory_reserved = torch.cuda.memory_reserved() / (1024 * 1024)  # MB
-            max_memory_allocated = torch.cuda.max_memory_allocated() / (1024 * 1024)  # MB
+            max_memory_allocated = torch.cuda.max_memory_allocated() / (
+                1024 * 1024
+            )  # MB
             return {
                 "current_allocated": f"{memory_allocated:.2f} MB",
                 "max_allocated": f"{max_memory_allocated:.2f} MB",
-                "reserved": f"{memory_reserved:.2f} MB"
+                "reserved": f"{memory_reserved:.2f} MB",
             }
         return {"error": "CUDA not available"}
 
     def run(
-            self,
-            checkpoint: str,
-            image_size: int = 840,
-            iterations: int = 100,
-            output: str = "benchmark_results.txt",
+        self,
+        checkpoint: str,
+        image_size: int = 840,
+        iterations: int = 100,
+        output: str = "benchmark_results.txt",
     ):
         """
         Run all benchmarks and save results
@@ -132,15 +134,14 @@ class BenchmarkSOD:
         print("\n=== Starting Benchmark ===")
 
         # Initialize predictor
-        predictor = self.SODPredictor(
-            checkpoint_path=checkpoint,
-            image_size=image_size
-        )
+        predictor = self.SODPredictor(checkpoint_path=checkpoint, image_size=image_size)
 
         try:
             # Measure FPS
             print("\nMeasuring FPS...")
-            fps = self.measure_fps(predictor, input_size=image_size, num_iterations=iterations)
+            fps = self.measure_fps(
+                predictor, input_size=image_size, num_iterations=iterations
+            )
 
             # Count parameters
             num_params = self.count_parameters(predictor.model)
@@ -159,7 +160,7 @@ class BenchmarkSOD:
 
             # Save results
             output_path = Path(output)
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write("=== SODPredictor Benchmark Results ===\n\n")
                 f.write(f"Model Parameters: {num_params:,}\n")
                 f.write(f"FLOPs: {flops}\n")
@@ -172,14 +173,21 @@ class BenchmarkSOD:
                 f.write("\n")
 
                 f.write("=== Memory Profile ===\n")
-                f.write(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=10))
+                f.write(
+                    prof.key_averages().table(
+                        sort_by="self_cuda_memory_usage", row_limit=10
+                    )
+                )
 
                 # Add stack traces for top memory-consuming operations
-                f.write("\n=== Top Memory-Consuming Operations (with stack traces) ===\n")
-                f.write(prof.key_averages(group_by_stack_n=5).table(
-                    sort_by="self_cuda_memory_usage",
-                    row_limit=5
-                ))
+                f.write(
+                    "\n=== Top Memory-Consuming Operations (with stack traces) ===\n"
+                )
+                f.write(
+                    prof.key_averages(group_by_stack_n=5).table(
+                        sort_by="self_cuda_memory_usage", row_limit=5
+                    )
+                )
 
             print(f"\nResults saved to {output_path}")
 
@@ -197,7 +205,12 @@ class BenchmarkSOD:
             torch.cuda.empty_cache()
 
 
-def compute_metrics(checkpoint="model.pth", image_size=840, iterations=100, output="benchmark_results.txt"):
+def compute_metrics(
+    checkpoint="model.pth",
+    image_size=840,
+    iterations=100,
+    output="benchmark_results.txt",
+):
     benchmark = BenchmarkSOD()
     benchmark.run(checkpoint, image_size, iterations, output)
 

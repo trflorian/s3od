@@ -80,7 +80,7 @@ pip install git+https://github.com/KupynOrest/s3od.git
 ```bash
 git clone https://github.com/KupynOrest/s3od.git
 cd s3od
-pip install -r requirements-training.txt
+uv sync
 ```
 
 ## Usage

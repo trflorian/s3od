@@ -4,7 +4,7 @@ criterions:
     output_key: pred_masks
     weight: 20
     loss:
-      _target_: model_training.loss.FocalLoss
+      _target_: synth_sod.model_training.loss.FocalLoss
       reduction: none
 
   - name: iou_loss
@@ -12,7 +12,7 @@ criterions:
     output_key: pred_masks
     weight: 1.0
     loss:
-      _target_: model_training.loss.IoULoss
+      _target_: synth_sod.model_training.loss.IoULoss
       smooth: 1e-6
       reduction: none
 
